@@ -12,27 +12,33 @@ It handles cloning, file reading, author extraction, and JSON export, making it 
 class RepoCodeExtractor:
     def __init__(self, repo_url, clone_dir=None, output_json=None, code_extensions=None, filter_author=None):
         self.repo_url = repo_url
-        self.clone_dir = repo_url.split("/")[-1] if not clone_dir else clone_dir
+        self.clone_dir = repo_url.split("/")[-2] + "/repository/" + repo_url.split("/")[-1] if not clone_dir else clone_dir
         self.code_extensions = code_extensions or {
             ".ipynb", ".py", ".js", ".ts", ".java", ".cpp", ".c", ".go", ".rs", ".php", ".rb", ".kt", ".swift"
         }
         self.filter_author = filter_author
 
+        self.output_json = repo_url.split("/")[-2] + "/json/"
         if output_json:
-            self.output_json = output_json
+            self.output_json += output_json
         elif filter_author:
-            self.output_json = repo_url.split("/")[-1] + "_" + "_".join(filter_author.split(" ")) + ".json"
+            self.output_json += repo_url.split("/")[-1] + "_" + "_".join(filter_author.split(" ")) + ".json"
         else:
-            self.output_json = repo_url.split("/")[-1] + ".json"
+            self.output_json += repo_url.split("/")[-1] + ".json"
 
     # Clones the repository if it doesn't exist locally
     def _clone_repo(self):
         if not os.path.exists(self.clone_dir):
             print(f"Clonage du repo depuis {self.repo_url}...")
-            Repo.clone_from(self.repo_url, self.clone_dir)
-            print("Repo cloné avec succès.")
+            try:
+                Repo.clone_from(self.repo_url, self.clone_dir)
+                print("Repo cloné avec succès.")
+            except Exception as e:
+                print(f"[!] Échec du clonage : {e}")
+                raise e  # ou return False si tu veux le gérer différemment
         else:
             print("Repo déjà cloné localement.")
+
 
     # Retrieves all code files in the cloned repository
     def _get_all_code_files(self):
@@ -93,12 +99,16 @@ class RepoCodeExtractor:
         file_data = self._attach_authors(file_data, authors)
         file_data = self._filter_by_author(file_data)
 
+        # 🔧 Création du dossier si manquant
+        os.makedirs(os.path.dirname(self.output_json), exist_ok=True)
+
         with open(self.output_json, "w", encoding="utf-8") as f:
             json.dump(file_data, f, indent=2, ensure_ascii=False)
 
         print(f"[✔] Export terminé dans {self.output_json}")
 
+
 # Example usage:
-# if __name__ == "__main__":
-#     extractor = RepoCodeExtractor("https://github.com/KentinPaille/ChessStatePrediction")
-#     extractor.export()
+if __name__ == "__main__":
+    extractor = RepoCodeExtractor("https://github.com/KentinPaille/ChessStatePrediction")
+    extractor.export()

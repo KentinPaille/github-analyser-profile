@@ -31,6 +31,8 @@ Script Python pour cloner un dépôt GitHub, extraire tous les fichiers de code 
 
    ```
    pip install gitpython
+   git config --global core.longpaths true
+
    ```
 
 ---
