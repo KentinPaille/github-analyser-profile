@@ -8,4 +8,4 @@ if __name__ == "__main__":
 
     for repo in repos:
         extractor = RepoCodeExtractor(repo)
-        extractor.export()
+        extractor.export_evenly_spaced_history_states()

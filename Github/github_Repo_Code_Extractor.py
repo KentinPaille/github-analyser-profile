@@ -12,19 +12,19 @@ It handles cloning, file reading, author extraction, and JSON export, making it 
 class RepoCodeExtractor:
     def __init__(self, repo_url, clone_dir=None, output_json=None, code_extensions=None, filter_author=None):
         self.repo_url = repo_url
-        self.clone_dir = repo_url.split("/")[-2] + "/repository/" + repo_url.split("/")[-1] if not clone_dir else clone_dir
+        self.clone_dir = repo_url.split("/")[3] + "/repository/" + repo_url.split("/")[4] if not clone_dir else clone_dir
         self.code_extensions = code_extensions or {
             ".ipynb", ".py", ".js", ".ts", ".java", ".cpp", ".c", ".go", ".rs", ".php", ".rb", ".kt", ".swift"
         }
         self.filter_author = filter_author
 
-        self.output_json = repo_url.split("/")[-2] + "/json/"
+        self.output_json = repo_url.split("/")[3] + "/json/"
         if output_json:
             self.output_json += output_json
         elif filter_author:
-            self.output_json += repo_url.split("/")[-1] + "_" + "_".join(filter_author.split(" ")) + ".json"
+            self.output_json += repo_url.split("/")[4] + "_" + "_".join(filter_author.split(" ")) + ".json"
         else:
-            self.output_json += repo_url.split("/")[-1] + ".json"
+            self.output_json += repo_url.split("/")[4] + ".json"
 
     # Clones the repository if it doesn't exist locally
     def _clone_repo(self):
@@ -65,16 +65,6 @@ class RepoCodeExtractor:
                 print(f"[!] Erreur lecture {path}: {e}")
         return file_contents
 
-    # Extracts authors for each file based on commit history
-    def _get_file_authors(self):
-        print("Extraction des auteurs par fichier...")
-        repo = Repo(self.clone_dir)
-        authors = defaultdict(set)
-        for commit in repo.iter_commits():
-            for file in commit.stats.files:
-                authors[file].add(commit.author.name)
-        return {f: list(a) for f, a in authors.items()}
-
     # Attaches authors to each file in the file data
     def _attach_authors(self, file_data, authors_dict):
         for f in file_data:
@@ -88,27 +78,68 @@ class RepoCodeExtractor:
             return file_data
         return [f for f in file_data if self.filter_author in f.get("authors", [])]
 
-    # Main method to export the code files and their authors to a JSON file
-    def export(self):
+    # Retrieves authors for each file up to a specific commit
+    def _get_file_authors_up_to_commit(self, repo, commit_sha):
+        authors = defaultdict(set)
+        for commit in repo.iter_commits(rev=commit_sha):
+            for file in commit.stats.files:
+                authors[file].add(commit.author.name)
+        return {f: list(a) for f, a in authors.items()}
+
+    # Exports evenly spaced history states from the repository
+    def export_evenly_spaced_history_states(self, snapshot_count=10):
         self._clone_repo()
-        code_files = self._get_all_code_files()
-        print(f"{len(code_files)} fichiers de code détectés.")
+        repo = Repo(self.clone_dir)
+        all_commits = list(repo.iter_commits())
+        all_commits.reverse()  # Du plus ancien au plus récent
 
-        file_data = self._read_files(code_files)
-        authors = self._get_file_authors()
-        file_data = self._attach_authors(file_data, authors)
-        file_data = self._filter_by_author(file_data)
+        if len(all_commits) < snapshot_count:
+            print(f"[!] Seulement {len(all_commits)} commits. Tous seront pris.")
+            selected_commits = all_commits
+        else:
+            step = len(all_commits) // snapshot_count
+            selected_commits = [all_commits[i * step] for i in range(snapshot_count)]
 
-        # 🔧 Création du dossier si manquant
+        history_snapshots = []
+
+        for commit in selected_commits:
+            print(f"[→] Snapshot {commit.hexsha[:7]} - {commit.author.name} - {commit.committed_datetime}")
+            repo.git.checkout(commit.hexsha)
+
+            # Lecture des fichiers à l'état de ce commit
+            code_files = self._get_all_code_files()
+            file_data = self._read_files(code_files)
+
+            # Récupération des auteurs jusqu'à CE commit
+            authors = self._get_file_authors_up_to_commit(repo, commit.hexsha)
+            file_data = self._attach_authors(file_data, authors)
+            filtered = self._filter_by_author(file_data)
+
+            history_snapshots.append({
+                "commit": commit.hexsha,
+                "author": commit.author.name,
+                "date": str(commit.committed_datetime),
+                "files": filtered
+            })
+
+        # Revenir sur la branche principale (main/master)
+        try:
+            repo.git.checkout("main")
+        except:
+            repo.git.checkout("master")
+
+        # Sauvegarde dans JSON
         os.makedirs(os.path.dirname(self.output_json), exist_ok=True)
+        output_path = self.output_json.replace(".json", ".history.json")
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(history_snapshots, f, indent=2, ensure_ascii=False)
 
-        with open(self.output_json, "w", encoding="utf-8") as f:
-            json.dump(file_data, f, indent=2, ensure_ascii=False)
+        print(f"[✔] Export de {len(history_snapshots)} snapshots terminé dans {output_path}")
 
-        print(f"[✔] Export terminé dans {self.output_json}")
+
 
 
 # Example usage:
-# if __name__ == "__main__":
-#     extractor = RepoCodeExtractor("https://github.com/KentinPaille/ChessStatePrediction")
-#     extractor.export()
+if __name__ == "__main__":
+    extractor = RepoCodeExtractor("https://github.com/KentinPaille/ChessStatePrediction")
+    extractor.export_evenly_spaced_history_states()
