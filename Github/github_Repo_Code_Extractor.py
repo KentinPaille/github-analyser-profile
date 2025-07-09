@@ -109,6 +109,6 @@ class RepoCodeExtractor:
 
 
 # Example usage:
-if __name__ == "__main__":
-    extractor = RepoCodeExtractor("https://github.com/KentinPaille/ChessStatePrediction")
-    extractor.export()
+# if __name__ == "__main__":
+#     extractor = RepoCodeExtractor("https://github.com/KentinPaille/ChessStatePrediction")
+#     extractor.export()
