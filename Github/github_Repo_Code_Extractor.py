@@ -136,9 +136,6 @@ class RepoCodeExtractor:
 
         print(f"[✔] Export de {len(history_snapshots)} snapshots terminé dans {output_path}")
 
-
-
-
 # Example usage:
 if __name__ == "__main__":
     extractor = RepoCodeExtractor("https://github.com/KentinPaille/ChessStatePrediction")
